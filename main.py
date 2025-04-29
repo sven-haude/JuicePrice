@@ -42,15 +42,17 @@ else:
 # ------------------------------------------------------------
 # Netto/Brutto-Schalter
 # ------------------------------------------------------------
-add_brutto  = st.toggle("Bruttopreise (inkl. aller Steuern & Abgaben)", value=False)
+add_brutto  = st.toggle("Bruttopreise (inkl. aller Steuern & Abgaben)", value=True)
 
 STROMSTEUER = 2.05
 KONZ_ABGABE = 1.667
 KWK_UMLAGE  = 0.277
 PAR19_NE    = 1.558
 OFFSHORE    = 0.816
+
 SUM_ABGABEN = STROMSTEUER + KONZ_ABGABE + KWK_UMLAGE + PAR19_NE + OFFSHORE
 MWST        = 1.19
+NEBENKOSTEN = 16     # pauschale Nebenkosten in ct/kWh
 
 # ------------------------------------------------------------
 # API-Abruf
@@ -78,8 +80,11 @@ df["time"] = (pd.to_datetime(df["start_timestamp"], unit="ms", utc=True)
               .dt.tz_convert("Europe/Berlin")
               .dt.tz_localize(None))
 df["net_ct_per_kwh"]   = df["marketprice"] / 10.0
-df["gross_ct_per_kwh"] = (df["net_ct_per_kwh"] + SUM_ABGABEN) * MWST
+df["gross_ct_per_kwh"] = (df["net_ct_per_kwh"] + NEBENKOSTEN) * MWST
 df.sort_values("time", inplace=True, ignore_index=True)
+
+# Hilfsspalte – Datums-String für Hover
+df["date_str"] = df["time"].dt.strftime("%d.%m")
 
 # ------------------------------------------------------------
 # Aktueller Preis + Marker-Zeit
@@ -98,23 +103,42 @@ if df["time"].min() <= now_local <= df["time"].max():
 # Plotly-Chart
 # ------------------------------------------------------------
 y_col = "gross_ct_per_kwh" if add_brutto else "net_ct_per_kwh"
-y_lab = "Preis (ct/kWh) " + ("brutto" if add_brutto else "netto")
+y_lab = "Preis "
 
-fig = px.line(df, x="time", y=y_col,
-              labels={"time": "Zeit", y_col: y_lab},
-              title="Strompreis-Zeitreihe")
-fig.update_traces(mode="lines+markers")
+fig = px.line(
+    df,
+    x="time",
+    y=y_col,
+    labels={"time": "Zeit", y_col: y_lab},
+    title="Strompreis-Zeitreihe",
+    custom_data=["date_str"]
+)
 
-# Stunden-Ticks HH:MM
-fig.update_xaxes(dtick=3600000, tickformat="%H:%M", ticklabelmode="period")
+fig.update_traces(
+    mode="lines+markers",
+    hovertemplate="Preis: %{y:.2f} ct/kWh<br>Datum: %{customdata}<extra></extra>"
+)
 
-# Marker-Linie – jetzt als ISO-String
-if marker_time is not None:
-    fig.add_vline(
-        x=marker_time.isoformat(),
-        line_color="red", line_dash="dot", line_width=2,
-        annotation_text="Jetzt", annotation_position="top"
-    )
+# Stunden-Ticks HH:MM, Hover zeigt HH:MM
+fig.update_xaxes(
+    dtick=3600000,
+    tickformat="%H:%M",
+    ticklabelmode="period",
+    hoverformat="%H:%M"
+)
+
+# Wechselnde Schattierung zur Tages-Abgrenzung
+unique_days = sorted(df["time"].dt.normalize().unique())
+for i, day in enumerate(unique_days):
+    if i % 2 == 0:  # jeden zweiten Tag schattieren
+        fig.add_vrect(
+            x0=day,
+            x1=day + pd.Timedelta(days=1),
+            fillcolor="LightGrey",
+            opacity=0.08,
+            layer="below",
+            line_width=0
+        )
 
 # Interaktion fixieren
 fig.update_layout(
@@ -129,7 +153,7 @@ st.plotly_chart(fig, use_container_width=True)
 # ------------------------------------------------------------
 # Fußnote
 # ------------------------------------------------------------
-footer = ("Bruttopreise inkl. MwSt & Abgaben"
+footer = ("Bruttopreise inkl. MwSt & Nebenkosten"
           if add_brutto else "Nettopreise (Spotmarkt)")
 footer += " · Folgetags-Daten täglich gegen 14 Uhr."
 st.caption(footer)
