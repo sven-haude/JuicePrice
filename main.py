@@ -18,15 +18,26 @@ today = date.today()
 default_start = today
 default_end   = today if datetime.now().hour < 14 else today + timedelta(days=1)
 
+# Callback: setzt den Date‑Picker auf „heute / morgen“
+def _set_now_dates():
+    st.session_state["date_range"] = (default_start, default_end)
+
 # ------------------------------------------------------------
 # Zeitraumwahl + „Jetzt“-Button
 # ------------------------------------------------------------
 col_date, col_btn = st.columns([4, 1])
 with col_date:
-    raw_date = st.date_input("Zeitraum auswählen",
-                             value=(default_start, default_end))
+    raw_date = st.date_input(
+        "Zeitraum auswählen",
+        value=(default_start, default_end),
+        key="date_range"
+    )
 with col_btn:
-    jump_now = st.button("⏱ Jetzt", help="Aktuellen Zeitraum wählen")
+    jump_now = st.button(
+        "⏱ Jetzt",
+        help="Aktuellen Zeitraum wählen",
+        on_click=_set_now_dates
+    )
 
 if jump_now:
     start_date, end_date = default_start, default_end
